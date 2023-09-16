@@ -1,7 +1,6 @@
 package com.libremobileos.desktopmode;
 
 import static android.content.Context.MODE_PRIVATE;
-
 import static com.libremobileos.desktopmode.PCModeAdvancedConfigFragment.*;
 import static com.libremobileos.desktopmode.PCModeConfigFragment.*;
 
@@ -20,71 +19,97 @@ import com.libremobileos.vncflinger.IVncFlinger;
 @SuppressLint("WrongConstant")
 public class VNCServiceController extends BroadcastReceiver {
 
+    private static final String VNC_FLINGER_PACKAGE = "com.libremobileos.vncflinger";
+    private static final String VNC_FLINGER_CLASS = "com.libremobileos.vncflinger.VncFlinger";
+    private static final String ACTION_START = "com.libremobileos.desktopmode.START";
+    private static final String SHARED_PREF_NAME = "PCModeConfigs";
+
     private Context mContext;
     private IVncFlinger mService;
     private VNCServiceConnection mServiceConnection;
     private VNCServiceListener mListener;
 
-    @SuppressWarnings("unused")
     public VNCServiceController() {}
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if(intent.getAction().equals("com.libremobileos.desktopmode.START"))
+        if (ACTION_START.equals(intent.getAction())) {
             start(context);
+        }
     }
 
     public interface VNCServiceListener {
-        void onServiceEvent(Boolean connected);
+        void onServiceEvent(boolean connected);
     }
 
     public VNCServiceController(Context context, VNCServiceListener listener) {
         mContext = context;
         mListener = listener;
         mServiceConnection = new VNCServiceConnection();
-        Intent intent = new Intent();
-        intent.setClassName("com.libremobileos.vncflinger", "com.libremobileos.vncflinger.VncFlinger");
-        context.bindService(intent, mServiceConnection, 0);
+        bindServiceToContext(context);
     }
 
     public void unBind() {
         mContext.unbindService(mServiceConnection);
     }
 
+    private void bindServiceToContext(Context context) {
+        Intent intent = createIntentForVncFlinger();
+        context.bindService(intent, mServiceConnection, 0);
+    }
+
+    private static Intent createIntentForVncFlinger() {
+        Intent intent = new Intent();
+        intent.setClassName(VNC_FLINGER_PACKAGE, VNC_FLINGER_CLASS);
+        return intent;
+    }
+
     class VNCServiceConnection implements ServiceConnection {
+        @Override
         public void onServiceConnected(ComponentName name, IBinder binder) {
             mService = IVncFlinger.Stub.asInterface(binder);
-            mListener.onServiceEvent(true);
+            if (mListener != null) {
+                mListener.onServiceEvent(true);
+            }
         }
 
+        @Override
         public void onServiceDisconnected(ComponentName name) {
             mService = null;
-            Intent intent = new Intent();
-            intent.setClassName("com.libremobileos.vncflinger", "com.libremobileos.vncflinger.VncFlinger");
-            mContext.bindService(intent, this, 0);
-            mListener.onServiceEvent(false);
+            bindServiceToContext(mContext);
+            if (mListener != null) {
+                mListener.onServiceEvent(false);
+            }
         }
     }
 
     public static void start(Context context) {
-        Intent intent = new Intent();
-        intent.setClassName("com.libremobileos.vncflinger", "com.libremobileos.vncflinger.VncFlinger");
-        SharedPreferences sharedPreferences = context.getSharedPreferences("PCModeConfigs", MODE_PRIVATE);
+        Intent intent = createIntentForVncFlinger();
+        SharedPreferences sharedPreferences = context.getSharedPreferences(SHARED_PREF_NAME, MODE_PRIVATE);
 
         // General
-        Boolean autoResize = sharedPreferences.getBoolean(KEY_PC_MODE_AUTO_RES, true);
-        Integer width = sharedPreferences.getInt(KEY_PC_MODE_RES_WIDTH, 1280);
-        Integer height = sharedPreferences.getInt(KEY_PC_MODE_RES_HEIGHT, 720);
-        int scale = sharedPreferences.getInt(KEY_PC_MODE_SCALING, 100);
+        boolean autoResize = sharedPreferences.getBoolean(PCModeConfigFragment.PrefKeys.AUTO_RES.key, 
+                                                          (Boolean) PCModeConfigFragment.PrefKeys.AUTO_RES.defaultValue);
+        int width = sharedPreferences.getInt(PCModeConfigFragment.PrefKeys.RES_WIDTH.key, 
+                                             (Integer) PCModeConfigFragment.PrefKeys.RES_WIDTH.defaultValue);
+        int height = sharedPreferences.getInt(PCModeConfigFragment.PrefKeys.RES_HEIGHT.key, 
+                                              (Integer) PCModeConfigFragment.PrefKeys.RES_HEIGHT.defaultValue);
+        int scale = sharedPreferences.getInt(PCModeConfigFragment.PrefKeys.SCALING.key, 
+                                             (Integer) PCModeConfigFragment.PrefKeys.SCALING.defaultValue);
 
         // Advanced
-        Boolean emulateTouchValue = sharedPreferences.getBoolean(KEY_PC_MODE_EMULATE_TOUCH, false);
-        Boolean relativeInputValue = sharedPreferences.getBoolean(KEY_PC_MODE_RELATIVE_INPUT, false);
-        Boolean mirrorInternalValue = sharedPreferences.getBoolean(KEY_PC_MODE_MIRROR_INTERNAL, false);
-        Boolean audioValue = sharedPreferences.getBoolean(KEY_PC_MODE_AUDIO, true);
-        Boolean remoteCursorValue = sharedPreferences.getBoolean(KEY_PC_MODE_REMOTE_CURSOR, true);
-        Boolean clipboard = sharedPreferences.getBoolean(KEY_PC_MODE_CLIPBOARD, true);
-
+        boolean emulateTouchValue = sharedPreferences.getBoolean(PCModeConfigFragment.PrefKeys.EMULATE_TOUCH.key, 
+                                                                (Boolean) PCModeConfigFragment.PrefKeys.EMULATE_TOUCH.defaultValue);
+        boolean relativeInputValue = sharedPreferences.getBoolean(PCModeConfigFragment.PrefKeys.RELATIVE_INPUT.key, 
+                                                                 (Boolean) PCModeConfigFragment.PrefKeys.RELATIVE_INPUT.defaultValue);
+        boolean mirrorInternalValue = sharedPreferences.getBoolean(PCModeConfigFragment.PrefKeys.MIRROR_INTERNAL.key, 
+                                                                  (Boolean) PCModeConfigFragment.PrefKeys.MIRROR_INTERNAL.defaultValue);
+        boolean audioValue = sharedPreferences.getBoolean(PCModeConfigFragment.PrefKeys.AUDIO.key, 
+                                                          (Boolean) PCModeConfigFragment.PrefKeys.AUDIO.defaultValue);
+        boolean remoteCursorValue = sharedPreferences.getBoolean(PCModeConfigFragment.PrefKeys.REMOTE_CURSOR.key, 
+                                                                (Boolean) PCModeConfigFragment.PrefKeys.REMOTE_CURSOR.defaultValue);
+        boolean clipboard = sharedPreferences.getBoolean(PCModeConfigFragment.PrefKeys.CLIPBOARD.key, 
+                                                         (Boolean) PCModeConfigFragment.PrefKeys.CLIPBOARD.defaultValue);
         int dpi = 160 * scale / 100;
         if (!autoResize) {
             intent.putExtra("width", width);
@@ -92,7 +117,6 @@ public class VNCServiceController extends BroadcastReceiver {
         }
         intent.putExtra("dpi", dpi);
         intent.putExtra("allowResize", autoResize);
-
         intent.putExtra("emulateTouch", emulateTouchValue);
         intent.putExtra("useRelativeInput", relativeInputValue);
         intent.putExtra("mirrorInternal", mirrorInternalValue);
@@ -108,9 +132,7 @@ public class VNCServiceController extends BroadcastReceiver {
     }
 
     public static void stop(Context context) {
-        Intent intent = new Intent();
-        intent.setClassName("com.libremobileos.vncflinger", "com.libremobileos.vncflinger.VncFlinger");
-
+        Intent intent = createIntentForVncFlinger();
         context.stopService(intent);
     }
 

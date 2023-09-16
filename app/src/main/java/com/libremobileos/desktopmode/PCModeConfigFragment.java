@@ -18,41 +18,63 @@ import java.util.Objects;
 public class PCModeConfigFragment extends PreferenceFragmentCompat implements
         Preference.OnPreferenceClickListener, Preference.OnPreferenceChangeListener {
 
-    public static final String KEY_PC_MODE_AUTO_RES = "pc_mode_auto_resolution";
-    public static final String KEY_PC_MODE_RES = "pc_mode_resolution";
-    public static final String KEY_PC_MODE_SCALING = "pc_mode_scaling";
-    public static final String KEY_PC_MODE_SERVICE_BUTTON = "pc_mode_service_button";
+    // Constants
+    public enum PrefKeys {
+        AUTO_RES("pc_mode_auto_resolution", true),
+        RES("pc_mode_resolution", null),
+        SCALING("pc_mode_scaling", 100),
+        SERVICE_BUTTON("pc_mode_service_button", null),
+        RES_WIDTH("pc_mode_res_width", 1280),
+        RES_HEIGHT("pc_mode_res_height", 720),
+        EMULATE_TOUCH("pc_mode_emulate_touch", false),
+        RELATIVE_INPUT("pc_mode_relative_input", false),
+        MIRROR_INTERNAL("pc_mode_mirror_internal", false),
+        AUDIO("pc_mode_audio", true),
+        REMOTE_CURSOR("pc_mode_remote_cursor", true),
+        CLIPBOARD("pc_mode_clipboard", true);
 
-    public static final String KEY_PC_MODE_RES_WIDTH = "pc_mode_res_width";
-    public static final String KEY_PC_MODE_RES_HEIGHT = "pc_mode_res_height";
+        final String key;
+        final Object defaultValue;
 
-    protected SharedPreferences mSharedPreferences;
-    protected Boolean mAutoResValue;
-    protected Integer mCustomResWidthValue;
-    protected Integer mCustomResHeightValue;
-    protected Integer mScalingValue;
+        PrefKeys(String key, Object defaultValue) {
+            this.key = key;
+            this.defaultValue = defaultValue;
+        }
+    }
 
-    protected SwitchPreference pcModeAutoRes;
-    protected ResolutionPreference pcModeRes;
-    protected SeekBarPreference pcModeScaling;
-    protected Preference pcModeServiceButton;
+    private SharedPreferences mSharedPreferences;
+    private Boolean mAutoResValue;
+    private Integer mCustomResWidthValue;
+    private Integer mCustomResHeightValue;
+    private Integer mScalingValue;
 
-    VNCServiceController mVncService;
+    private SwitchPreference pcModeAutoRes;
+    private ResolutionPreference pcModeRes;
+    private SeekBarPreference pcModeScaling;
+    private Preference pcModeServiceButton;
+
+    private VNCServiceController mVncService;
 
     @Override
     public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
         setPreferencesFromResource(R.xml.pc_mode_config_preferences, rootKey);
 
         mSharedPreferences = requireActivity().getSharedPreferences("PCModeConfigs", MODE_PRIVATE);
-        mAutoResValue = mSharedPreferences.getBoolean(KEY_PC_MODE_AUTO_RES, true);
-        mCustomResWidthValue = mSharedPreferences.getInt(KEY_PC_MODE_RES_WIDTH, 1280);
-        mCustomResHeightValue = mSharedPreferences.getInt(KEY_PC_MODE_RES_HEIGHT, 720);
-        mScalingValue = mSharedPreferences.getInt(KEY_PC_MODE_SCALING, 100);
+        mAutoResValue = mSharedPreferences.getBoolean(PrefKeys.AUTO_RES.key, (Boolean) PrefKeys.AUTO_RES.defaultValue);
+        mCustomResWidthValue = mSharedPreferences.getInt(PrefKeys.RES_WIDTH.key, (Integer) PrefKeys.RES_WIDTH.defaultValue);
+        mCustomResHeightValue = mSharedPreferences.getInt(PrefKeys.RES_HEIGHT.key, (Integer) PrefKeys.RES_HEIGHT.defaultValue);
+        mScalingValue = mSharedPreferences.getInt(PrefKeys.SCALING.key, (Integer) PrefKeys.SCALING.defaultValue);
 
-        pcModeAutoRes = findPreference(KEY_PC_MODE_AUTO_RES);
-        pcModeRes = findPreference(KEY_PC_MODE_RES);
-        pcModeScaling = findPreference(KEY_PC_MODE_SCALING);
-        pcModeServiceButton = findPreference(KEY_PC_MODE_SERVICE_BUTTON);
+        initializePreferences();
+
+        mVncService = new VNCServiceController(requireActivity(), this::setServiceButtonTitle);
+    }
+
+    private void initializePreferences() {
+        pcModeAutoRes = findPreference(PrefKeys.AUTO_RES.key);
+        pcModeRes = findPreference(PrefKeys.RES.key);
+        pcModeScaling = findPreference(PrefKeys.SCALING.key);
+        pcModeServiceButton = findPreference(PrefKeys.SERVICE_BUTTON.key);
 
         pcModeAutoRes.setOnPreferenceChangeListener(this);
         pcModeRes.setOnPreferenceChangeListener(this);
@@ -64,13 +86,10 @@ public class PCModeConfigFragment extends PreferenceFragmentCompat implements
         pcModeRes.setHeight(mCustomResHeightValue, false);
         pcModeRes.setEnabled(!mAutoResValue);
         pcModeScaling.setValue(mScalingValue);
+    }
 
-        mVncService = new VNCServiceController(requireActivity(), connected -> {
-            if (connected)
-                pcModeServiceButton.setTitle(R.string.pc_mode_service_stop);
-            else
-                pcModeServiceButton.setTitle(R.string.pc_mode_service_start);
-        });
+    private void setServiceButtonTitle(boolean connected) {
+        pcModeServiceButton.setTitle(connected ? R.string.pc_mode_service_stop : R.string.pc_mode_service_start);
     }
 
     @Override
@@ -81,103 +100,96 @@ public class PCModeConfigFragment extends PreferenceFragmentCompat implements
 
     @Override
     public boolean onPreferenceClick(Preference pref) {
-        final Context context = getActivity();
-        if (context == null) {
-            return false;
-        }
+        Context context = getActivity();
+        if (context == null) return false;
 
-        if (pref.getKey().equals(KEY_PC_MODE_SERVICE_BUTTON)) {
+        if (PrefKeys.SERVICE_BUTTON.key.equals(pref.getKey())) {
             CharSequence title = pref.getTitle();
             if (getString(R.string.pc_mode_service_stop).contentEquals(title)) {
                 VNCServiceController.stop(getActivity());
                 return true;
-            } else if (getString(R.string.pc_mode_service_start).contentEquals(title)) {
-                VNCServiceController.start(getActivity());
-                return true;
-            } else if (getString(R.string.pc_mode_service_restart_apply).contentEquals(title)) {
-                mVncService.unBind();
-                VNCServiceController.stop(getActivity());
-                applyChanges();
-                VNCServiceController.start(getActivity());
-                mVncService = new VNCServiceController(requireActivity(), connected -> {
-                    if (connected)
-                        pcModeServiceButton.setTitle(R.string.pc_mode_service_stop);
-                    else
-                        pcModeServiceButton.setTitle(R.string.pc_mode_service_start);
-                });
-                return true;
-            } else if (getString(R.string.pc_mode_service_apply).contentEquals(title)) {
-                applyChanges();
-                VNCServiceController.start(getActivity());
-                pcModeServiceButton.setTitle(R.string.pc_mode_service_stop);
+            } else if (getString(R.string.pc_mode_service_start).contentEquals(title) ||
+                       getString(R.string.pc_mode_service_restart_apply).contentEquals(title) ||
+                       getString(R.string.pc_mode_service_apply).contentEquals(title)) {
+                handleServiceControl(title);
                 return true;
             }
         }
-
         return false;
+    }
+
+    private void handleServiceControl(CharSequence title) {
+        if (getString(R.string.pc_mode_service_restart_apply).contentEquals(title)) {
+            mVncService.unBind();
+            VNCServiceController.stop(getActivity());
+            applyChanges();
+            VNCServiceController.start(getActivity());
+            mVncService = new VNCServiceController(requireActivity(), this::setServiceButtonTitle);
+        } else if (getString(R.string.pc_mode_service_apply).contentEquals(title)) {
+            applyChanges();
+            VNCServiceController.start(getActivity());
+            setServiceButtonTitle(true);
+        } else {
+            VNCServiceController.start(getActivity());
+        }
     }
 
     @Override
     public boolean onPreferenceChange(Preference pref, Object newValue) {
-        final Context context = getActivity();
-        if (context == null) {
-            return false;
-        }
+        String key = pref.getKey();
 
-        switch (pref.getKey()) {
-            case KEY_PC_MODE_AUTO_RES:
-                Boolean isAutoChecked = (Boolean) newValue;
-                if (isAutoChecked != mAutoResValue) {
-                    pcModeRes.setEnabled(!isAutoChecked);
-                    mAutoResValue = isAutoChecked;
-                    handleChange(true);
-                }
-                return true;
-            case KEY_PC_MODE_RES:
-                boolean changed = false;
-                if (pcModeRes.getWidth() != mCustomResWidthValue) {
-                    mCustomResWidthValue = pcModeRes.getWidth();
-                    changed = true;
-                }
-                if (pcModeRes.getHeight() != mCustomResHeightValue) {
-                    mCustomResHeightValue = pcModeRes.getHeight();
-                    changed = true;
-                }
-                if (changed) {
-                    handleChange(false);
-                }
-                return true;
-            case KEY_PC_MODE_SCALING:
-                Integer progress = (Integer) newValue;
-                if (!Objects.equals(progress, mScalingValue)) {
-                    mScalingValue = progress;
-                    handleChange(false);
-                }
-                return true;
+        if (key.equals(PrefKeys.AUTO_RES.key)) {
+            handleAutoResChange((Boolean) newValue);
+            return true;
+        } else if (key.equals(PrefKeys.RES.key)) {
+            handleResolutionChange();
+            return true;
+        } else if (key.equals(PrefKeys.SCALING.key)) {
+            handleScalingChange((Integer) newValue);
+            return true;
         }
-
         return false;
+    }
+
+    private void handleAutoResChange(Boolean newValue) {
+        if (!Objects.equals(newValue, mAutoResValue)) {
+            pcModeRes.setEnabled(!newValue);
+            mAutoResValue = newValue;
+            handleChange(true);
+        }
+    }
+
+    private void handleResolutionChange() {
+        boolean changed = pcModeRes.getWidth() != mCustomResWidthValue || pcModeRes.getHeight() != mCustomResHeightValue;
+        if (changed) {
+            mCustomResWidthValue = pcModeRes.getWidth();
+            mCustomResHeightValue = pcModeRes.getHeight();
+            handleChange(false);
+        }
+    }
+
+    private void handleScalingChange(Integer newValue) {
+        if (!Objects.equals(newValue, mScalingValue)) {
+            mScalingValue = newValue;
+            handleChange(false);
+        }
     }
 
     private void handleChange(boolean needRestart) {
         if (mVncService == null || !mVncService.isRunning()) {
             applyChanges();
-            pcModeServiceButton.setTitle(R.string.pc_mode_service_start);
-        } else if (needRestart) {
-            pcModeServiceButton.setTitle(R.string.pc_mode_service_restart_apply);
+            setServiceButtonTitle(false);
         } else {
-            pcModeServiceButton.setTitle(R.string.pc_mode_service_apply);
+            pcModeServiceButton.setTitle(needRestart ? R.string.pc_mode_service_restart_apply : R.string.pc_mode_service_apply);
         }
     }
 
     private void applyChanges() {
-        SharedPreferences.Editor myEdit = mSharedPreferences.edit();
-
-        myEdit.putBoolean(KEY_PC_MODE_AUTO_RES, mAutoResValue);
-        myEdit.putInt(KEY_PC_MODE_RES_WIDTH, mCustomResWidthValue);
-        myEdit.putInt(KEY_PC_MODE_RES_HEIGHT, mCustomResHeightValue);
-        myEdit.putInt(KEY_PC_MODE_SCALING, mScalingValue);
-
-        myEdit.apply();
+        SharedPreferences.Editor editor = mSharedPreferences.edit();
+        editor.putBoolean(PrefKeys.AUTO_RES.key, mAutoResValue)
+              .putInt(PrefKeys.RES_WIDTH.key, mCustomResWidthValue)
+              .putInt(PrefKeys.RES_HEIGHT.key, mCustomResHeightValue)
+              .putInt(PrefKeys.SCALING.key, mScalingValue)
+              .apply();
     }
 }
